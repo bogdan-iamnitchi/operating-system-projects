@@ -28,6 +28,7 @@ int list(int recursive, long int min_size, int has_perm_write, const char* dirPa
     dir = opendir(dirPath);
     if(dir == NULL) {
         fprintf(stderr, "ERROR\nThis directory can't be opened\n");
+        free(fullPath);
         return -1;
     }
 
@@ -36,7 +37,6 @@ int list(int recursive, long int min_size, int has_perm_write, const char* dirPa
             if(strlen(fullPath) + strlen(entry->d_name) >= size_path) {
                 size_path *= 2;
                 fullPath = (char *)realloc(fullPath, size_path * sizeof(char));
-                printf("aici");
             }
             snprintf(fullPath, size_path, "%s/%s", dirPath, entry->d_name);
             if(!lstat(fullPath, &fileMetadata)) {
@@ -63,6 +63,7 @@ int list(int recursive, long int min_size, int has_perm_write, const char* dirPa
         }
     }
 
+    free(fullPath);
     closedir(dir);
     return 0;
 }
@@ -78,98 +79,96 @@ int typeIsValid(int type){
     return 1;
 }
 
-int fileIsValid(int fd) {
-    char magic[3];
+section_t* fileIsValid(int fd, int *no_of_sections, int *version) {
+    char magic[2];
     int header_size;
-    char version;
-    char no_of_sections;
-    
-    //section_t *sections = NULL;
-    section_t section;
-
    
-    //------MAGIC
-    //magic[3]='\n';
+    //---------------------------------------MAGIC
     if(read(fd, &magic, 2) < 0){
         fprintf(stderr, "ERROR\nCould not read from file\n");
-        return -1;
+        return NULL;
     } else if (strcmp(magic, "Q0")) {
         fprintf(stderr, "ERROR\nwrong magic\n");
-        return -1;
+        return NULL;
     }
 
-    //------HEADER_SIZE
+    //---------------------------------------HEADER_SIZE
     if(read(fd, &header_size, 2) < 0){
         fprintf(stderr, "ERROR\nCould not read from file\n");
-        return -1;
+        return NULL;
     }
 
-    //------VERSION
-    if(read(fd, &version, 1) < 0){
+    //----------------------------------------VERSION
+    if(read(fd, version, 1) < 0){
         fprintf(stderr, "ERROR\nCould not read from file\n");
-        return -1;
+        return NULL;
     }
-    else if (version < 73 || version > 97)
+    else if (*version < 73 || *version > 97)
     {
         fprintf(stderr, "ERROR\nwrong version\n");
-        return -1;
+        return NULL;
     }
 
-    //------NUMBER_OF_SECTIONS
-    if(read(fd, &no_of_sections, 1) < 0){
+    //----------------------------------------NUMBER_OF_SECTIONS
+    if(read(fd, no_of_sections, 1) < 0){
         fprintf(stderr, "ERROR\nCould not read from file\n");
-        return -1;
-    }else if (no_of_sections < 3 && no_of_sections > 14) {
+        return NULL;
+    } else if (*no_of_sections < 3 || *no_of_sections > 14) {
         fprintf(stderr, "ERROR\nwrong sect_nr\n");
-        return -1;
+        return NULL;
     }
-    
-    //printf("%s, %d, %d, %d\n", magic, header_size, version, no_of_sections);
 
+    //---------------------------------------SECTIONS
+    section_t *sections = (section_t*)malloc((*no_of_sections)*sizeof(section_t));
+    if(sections == NULL) {
+        fprintf(stderr, "ERROR\nCould not allocate required memory\n");
+        return NULL;
+    }
 
-    //-------------------------------------SECTIONS
-    printf("SUCCESS\n");
-	printf("version=%d\n", version);
-	printf("nr_sections=%d\n", no_of_sections);
+    for(int i=0; i<*no_of_sections; i++) {
 
-    // read(fd, &section, sizeof(section_t)-1);
-    // printf("auleu %s %d %d %d\n", section.name, section.type, section.offset, section.size);
-
-    for(int i=0; i<no_of_sections; i++) {
-
-        read(fd, &section.name, 19);
-		read(fd, &section.type, 4);
-		read(fd, &section.offset, 4);
-		read(fd, &section.size, 4);
-        if(typeIsValid(section.type)){
+        read(fd, &sections[i].name, 19);
+        read(fd, &sections[i].type, 4);
+        read(fd, &sections[i].offset, 4);
+        read(fd, &sections[i].size, 4);
+        if(typeIsValid(sections[i].type)){
             fprintf(stderr, "ERROR\nwrong sect_type\n");
-            return -1;
+            return NULL;
         }
-        printf("section%d: %s %d %d\n", i + 1, section.name, section.type, section.size);
+       
     }
 
-    close(fd);
-    return 0;
+    return sections;
 }
 
 int parse(char *filePath){
 
     int fd = -1;
+    int version;
+    int no_of_sections = 0;
+    section_t *sections = NULL;
 
     fd = open(filePath, O_RDONLY);
     if(fd == -1) {
         fprintf(stderr, "ERROR\nThis file can't be opened\n");
         return -1;
     }
-    
-    if(fileIsValid(fd)){
+    sections = fileIsValid(fd, &no_of_sections, &version);
+    if(sections == NULL){
        return -1; 
     }
 
- 
+    printf("SUCCESS\n");
+	printf("version=%d\n", version);
+	printf("nr_sections=%d\n", no_of_sections);
     
+    for(int i=0; i<no_of_sections; i++) {
 
+        printf("section%d: %s %d %d\n", i+1, sections[i].name, sections[i].type, sections[i].size);
+    }
 
+    free(sections);
+    close(fd);
     return 0;
 }
 
@@ -202,7 +201,6 @@ int solveListParameters(int size, char **argv){
         fprintf(stderr, "ERROR\nInvalid directory path\n");
         return -1;
     }
-    //printf(" Recursive = %d\n Min_Size = %d\n Has_perm_write = %d\n Path = %s\n", recursive, min_size, has_perm_write, path);
 
     printf("SUCCESS\n");
     list(recursive, min_size, has_perm_write, path);
@@ -230,6 +228,7 @@ int solveParseParameters(int size, char **argv){
     return 0;
 }
 
+//------------------------------------------------------------------------------------------------------MAIN_FUNCTION
 int main(int argc, char **argv){
 
     if(argc >= 2){
