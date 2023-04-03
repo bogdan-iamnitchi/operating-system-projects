@@ -5,7 +5,7 @@ import threading, random, shutil, struct, time, math, tarfile
 
 A1_PROG = "a1"
 VERBOSE = True
-VALGRIND = False
+VALGRIND = True
 TIME_LIMIT = 4
 
 COMPILE_LOG_FILE_NAME = "compile_log.txt"
