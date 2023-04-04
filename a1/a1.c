@@ -429,7 +429,6 @@ int findAll(char *filePath){
     }
     
     if(findAllValid(fd, header)!=0) {
-        free(header->sections);
         free(header);
         return -1;
     }
