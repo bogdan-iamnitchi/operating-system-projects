@@ -10,6 +10,7 @@
 #define NEW_LINE 10
 #define MAX_SECTION_SIZE 1314
 #define MAX_PATH_SIZE 512
+#define READ_AMOUNT 64
 
 typedef struct {
     char name[20];
@@ -89,10 +90,8 @@ int fileIsValid(int errMsg, int fd, header_t* header) {
     }
 
     for(int i=0; i<header->no_of_sections; i++) {
-
         read(fd, header->sections[i].name, 19);
         header->sections[i].name[20] = '\0';
-
         header->sections[i].type = 0;
         read(fd, &header->sections[i].type, 4);
         header->sections[i].offset = 0;
@@ -107,9 +106,6 @@ int fileIsValid(int errMsg, int fd, header_t* header) {
     }
     return 0;
 }
-
-//----------------------------------------------------------------------------------------------------------------------OPEN_ADN_CHECk_FILE
-
 
 //-----------------------------------------------------------------------------------------------------------------------LIST_FUCNTION
 int list(int checkValid, int recursive, long int min_size, int has_perm_write, const char* dirPath){
@@ -142,11 +138,17 @@ int list(int checkValid, int recursive, long int min_size, int has_perm_write, c
             if(!lstat(fullPath, &fileMetadata)) {
                 if(min_size != -1) {
                     if(fileMetadata.st_size > min_size) {
+                        if(cnt++ == 0) {
+                            printf("SUCCESS\n");
+                        }
                         printf("%s\n", fullPath);
                     }
                 }
                 else if(has_perm_write){
                     if(fileMetadata.st_mode & S_IWUSR) {
+                        if(cnt++ == 0) {
+                            printf("SUCCESS\n");
+                        }
                         printf("%s\n", fullPath);
                     }
                 }
@@ -159,7 +161,10 @@ int list(int checkValid, int recursive, long int min_size, int has_perm_write, c
                     }
                 }
                 else if(!checkValid){
-                    printf("%s\n", fullPath);
+                    if(cnt++ == 0) {
+                            printf("SUCCESS\n");
+                        }
+                        printf("%s\n", fullPath);
                 }
                 
                 if(recursive) {
@@ -207,7 +212,6 @@ int solveListParameters(int size, char **argv){
         return -1;
     }
 
-    printf("SUCCESS\n");
     return list(checkValid, recursive, min_size, has_perm_write, path);
 }
 
@@ -309,6 +313,7 @@ int extractLinie(int fd, header_t* header, char* filePath, int sect_nr, int line
 
     return 0;
 }
+
 
 //-------------------------------------------------------------------------------------------------------------------------------EXTRACT_FUCNTION
 int extract(char *filePath, int sect_nr, int line_nr){
