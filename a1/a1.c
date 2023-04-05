@@ -12,7 +12,7 @@
 #define MAX_PATH_SIZE 512
 
 typedef struct {
-    char name[19];
+    char name[20];
     int type;
     off_t offset;
     off_t size;
@@ -26,10 +26,94 @@ typedef struct {
     section_t *sections;
 }header_t;
 
+int findAll(char *filePath);
+
+//------------------------------------------------------------------------------------------------------------------------------ISVALID_FUCNTION
+int typeIsValid(int type){
+    const int vec[] = {56, 85, 61, 57, 18, 19, 64};
+    for(int i=0; i < sizeof(vec)/sizeof(int); i++) {
+        if(vec[i] == type) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int fileIsValid(int errMsg, int fd, header_t* header) {
+
+    //---------------------------------------MAGIC
+    if(read(fd, header->magic, 2) < 0){
+        printf("ERROR\nCould not read from file\n");
+        return -1;
+    }
+    header->magic[2] = '\0';
+    if (strncmp(header->magic, "Q0", 2)) {
+        if(errMsg) {printf("ERROR\nwrong magic\n");}
+        return -1;
+    }
+    
+    //---------------------------------------HEADER_SIZE
+    header->header_size = 0;
+    if(read(fd, &header->header_size, 2) < 0){
+        printf("ERROR\nCould not read from file\n");
+        return -1;
+    }
+    //----------------------------------------VERSION
+    header->version = 0;
+    if(read(fd, &header->version, 1) < 0){
+        printf("ERROR\nCould not read from file\n");
+        return -1;
+    } 
+    else if (header->version < 73 || header->version > 97)
+    {
+        if(errMsg) {printf("ERROR\nwrong version\n");}
+        return -1;
+    }
+    
+    //----------------------------------------NUMBER_OF_SECTIONS
+    header->no_of_sections = 0;
+    if(read(fd, &header->no_of_sections, 1) < 0){
+        printf("ERROR\nCould not read from file\n");
+        return -1;
+    } 
+    else if (header->no_of_sections < 3 || header->no_of_sections > 14) {
+        if(errMsg) {printf("ERROR\nwrong sect_nr\n");}
+        return -1;
+    }
+    
+    //---------------------------------------SECTIONS
+    header->sections = (section_t*)malloc(header->no_of_sections*sizeof(section_t));
+    if(header->sections == NULL) {
+        printf("ERROR\nCould not allocate required memory\n");
+        return -1;
+    }
+
+    for(int i=0; i<header->no_of_sections; i++) {
+
+        read(fd, header->sections[i].name, 19);
+        header->sections[i].name[20] = '\0';
+
+        header->sections[i].type = 0;
+        read(fd, &header->sections[i].type, 4);
+        header->sections[i].offset = 0;
+        read(fd, &header->sections[i].offset, 4);
+        header->sections[i].size = 0;
+        read(fd, &header->sections[i].size, 4);
+        if(typeIsValid(header->sections[i].type)){
+            if(errMsg) {printf("ERROR\nwrong sect_types\n");}
+            free(header->sections);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------OPEN_ADN_CHECk_FILE
 
 
 //-----------------------------------------------------------------------------------------------------------------------LIST_FUCNTION
-int list(int recursive, long int min_size, int has_perm_write, const char* dirPath){
+int list(int checkValid, int recursive, long int min_size, int has_perm_write, const char* dirPath){
+    static int cnt = 0;
     DIR *dir = NULL;
     struct dirent *entry = NULL;
     struct stat fileMetadata;
@@ -66,13 +150,21 @@ int list(int recursive, long int min_size, int has_perm_write, const char* dirPa
                         printf("%s\n", fullPath);
                     }
                 }
-                else {
+                else if(checkValid && S_ISREG(fileMetadata.st_mode)) {
+                    if(!findAll(fullPath)){
+                        if(cnt++ == 0) {
+                            printf("SUCCESS\n");
+                        }
+                        printf("%s\n", fullPath);
+                    }
+                }
+                else if(!checkValid){
                     printf("%s\n", fullPath);
                 }
                 
                 if(recursive) {
                     if(S_ISDIR(fileMetadata.st_mode)) {
-                        list(recursive, min_size, has_perm_write, fullPath);
+                        list(checkValid, recursive, min_size, has_perm_write, fullPath);
                     }
                 }
             }
@@ -90,6 +182,7 @@ int solveListParameters(int size, char **argv){
     int recursive = 0;
     long int min_size = -1;
     int has_perm_write = 0;
+    int checkValid = 0;
     char* path = NULL;
     struct stat fileMetadata;
 
@@ -115,82 +208,13 @@ int solveListParameters(int size, char **argv){
     }
 
     printf("SUCCESS\n");
-    return list(recursive, min_size, has_perm_write, path);
-}
-
-
-//------------------------------------------------------------------------------------------------------------------------------ISVALID_FUCNTION
-int typeIsValid(int type){
-    const int vec[] = {56, 85, 61, 57, 18, 19, 64};
-    for(int i=0; i < sizeof(vec)/sizeof(int); i++) {
-        if(vec[i] == type) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-int fileIsValid(int fd, header_t* header) {
-    //---------------------------------------MAGIC
-    if(read(fd, header->magic, 2) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } 
-    else if (strcmp(header->magic, "Q0")) {
-        printf("ERROR\nwrong magic\n");
-        return -1;
-    } 
-
-    //---------------------------------------HEADER_SIZE
-    if(read(fd, &header->header_size, 2) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    }
-   
-    //----------------------------------------VERSION
-    if(read(fd, &header->version, 1) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } else if (header->version < 73 || header->version > 97)
-    {
-        printf("ERROR\nwrong version\n");
-        return -1;
-    }
-
-    //----------------------------------------NUMBER_OF_SECTIONS
-    if(read(fd, &header->no_of_sections, 1) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } else if (header->no_of_sections < 3 || header->no_of_sections > 14) {
-        printf("ERROR\nwrong sect_nr\n");
-        return -1;
-    }
-    
-    //---------------------------------------SECTIONS
-    header->sections = (section_t*)malloc(header->no_of_sections*sizeof(section_t));
-    if(header->sections == NULL) {
-        printf("ERROR\nCould not allocate required memory\n");
-        return -1;
-    }
-    for(int i=0; i<header->no_of_sections; i++) {
-
-        read(fd, header->sections[i].name, 19);
-        read(fd, &header->sections[i].type, 4);
-        read(fd, &header->sections[i].offset, 4);
-        read(fd, &header->sections[i].size, 4);
-        if(typeIsValid(header->sections[i].type)){
-            printf("ERROR\nwrong sect_types\n");
-            free(header->sections);
-            return -1;
-        }
-    }
-    return 0;
+    return list(checkValid, recursive, min_size, has_perm_write, path);
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------PARSE_FUCNTION
 int parse(char *filePath){
 
-    int fd = -1;
+    int fd = -1, errMsg = 1;
     header_t* header = (header_t*)malloc(sizeof(header_t));
     if(header == NULL) {
         printf("ERROR\nCould not allocate required memory\n");
@@ -204,7 +228,8 @@ int parse(char *filePath){
         return -1;
     }
     
-    if(fileIsValid(fd, header) != 0){
+    if(fileIsValid(errMsg, fd, header) != 0){
+        close(fd);
         free(header);
         return -1; 
     }
@@ -288,7 +313,7 @@ int extractLinie(int fd, header_t* header, char* filePath, int sect_nr, int line
 //-------------------------------------------------------------------------------------------------------------------------------EXTRACT_FUCNTION
 int extract(char *filePath, int sect_nr, int line_nr){
 
-    int fd = -1;
+    int fd = -1, errMsg = 0;
     header_t* header = (header_t*)malloc(sizeof(header_t));
     if(header == NULL) {
         printf("ERROR\nCould not allocate required memory\n");
@@ -302,7 +327,7 @@ int extract(char *filePath, int sect_nr, int line_nr){
         free(header);
         return -1;
     }
-    if(fileIsValid(fd, header) != 0){
+    if(fileIsValid(errMsg, fd, header) != 0){
         close(fd);
         free(header);
         return -1; 
@@ -356,64 +381,10 @@ int solveExtractParameters(int size, char **argv){
     return extract(path, sect_nr, line_nr);
 }
 
-int findAllValid(int fd, header_t* header){
-    //---------------------------------------MAGIC
-    header->magic[2] = 0;
-    if(read(fd, header->magic, 2) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } 
-    else if (strcmp(header->magic, "Q0")) {
-        return -1;
-    } 
-
-    //---------------------------------------HEADER_SIZE
-    if(read(fd, &header->header_size, 2) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    }
-   
-    //----------------------------------------VERSION
-    if(read(fd, &header->version, 1) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } else if (header->version < 73 || header->version > 97)
-    {
-        return -1;
-    }
-
-    //----------------------------------------NUMBER_OF_SECTIONS
-    if(read(fd, &header->no_of_sections, 1) < 0){
-        printf("ERROR\nCould not read from file\n");
-        return -1;
-    } else if (header->no_of_sections < 3 || header->no_of_sections > 14) {
-        return -1;
-    }
-    
-    //---------------------------------------SECTIONS
-    header->sections = (section_t*)malloc(header->no_of_sections*sizeof(section_t));
-    if(header->sections == NULL) {
-        printf("ERROR\nCould not allocate required memory\n");
-        return -1;
-    }
-    for(int i=0; i<header->no_of_sections; i++) {
-
-        read(fd, header->sections[i].name, 19);
-        read(fd, &header->sections[i].type, 4);
-        read(fd, &header->sections[i].offset, 4);
-        read(fd, &header->sections[i].size, 4);
-        if(typeIsValid(header->sections[i].type)){
-            free(header->sections);
-            return -1;
-        }
-    }
-    return 0;
-}
-
 //-------------------------------------------------------------------------------------------------------------------------------EXTRACT_FUCNTION
 int findAll(char *filePath){
 
-    int fd = -1;
+    int fd = -1, errMsg = 0;
     header_t* header = (header_t*)malloc(sizeof(header_t));
     if(header == NULL) {
         printf("ERROR\nCould not allocate required memory\n");
@@ -427,13 +398,12 @@ int findAll(char *filePath){
         free(header);
         return -1;
     }
-    
-    if(findAllValid(fd, header)!=0) {
+
+    if(fileIsValid(errMsg, fd, header)!=0) {
+        close(fd);
         free(header);
         return -1;
     }
-
-
     for(int i=0; i<header->no_of_sections; i++){
         if(header->sections[i].size > MAX_SECTION_SIZE) {
             close(fd);
@@ -443,66 +413,20 @@ int findAll(char *filePath){
         }
     }
 
-    close(fd);
     free(header->sections);
     free(header);
+    close(fd);
     return 0;
 }
-
-//-------------------------------------------------------------------------------------------------------------------------------LIST_FIND_ALL
-int listFindAll(const char* dirPath){
-    static int cnt = 0;
-    DIR *dir = NULL;
-    struct dirent *entry = NULL;
-    struct stat fileMetadata;
-
-    off_t size_path = MAX_PATH_SIZE;
-    char *fullPath = (char *)malloc(size_path * sizeof(char));
-    if(fullPath == NULL) {
-        printf("ERROR\nCould not allocate required memory\n");
-        return -1;
-    }
-
-    dir = opendir(dirPath);
-    if(dir == NULL) {
-        printf("ERROR\nThis directory can't be opened\n");
-        free(fullPath);
-        return -1;
-    }
-
-    while((entry = readdir(dir)) != NULL) {
-        if(strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")){
-            if(strlen(fullPath) + strlen(entry->d_name) >= size_path) {
-                size_path *= 2;
-                fullPath = (char *)realloc(fullPath, size_path * sizeof(char));
-            }
-            snprintf(fullPath, size_path, "%s/%s", dirPath, entry->d_name);
-            if(!lstat(fullPath, &fileMetadata)) {
-                if(S_ISREG(fileMetadata.st_mode)) {
-                    if(!findAll(fullPath)){
-                        if(cnt++ == 0) {
-                            printf("SUCCESS\n");
-                        }
-                        printf("%s\n", fullPath);
-                    }
-                }
-                if(S_ISDIR(fileMetadata.st_mode)) {
-                    listFindAll(fullPath);
-                }
-            }
-        }
-    }
-
-    free(fullPath);
-    closedir(dir);
-    return 0;
-}
-
 
 
 //---------------------------------------------------------SOLVE_PARAMETERS_FINDALL
 int solveFindAllParameters(int size, char **argv){
     int cnt = 2;
+    int recursive = 1;
+    long int min_size = -1;
+    int has_perm_write = 0;
+    int checkValid = 1;
     char* path = NULL;
     struct stat fileMetadata;
 
@@ -515,7 +439,7 @@ int solveFindAllParameters(int size, char **argv){
         return -1;
     }
 
-    return listFindAll(path);
+    return list(checkValid, recursive, min_size, has_perm_write, path);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------MAIN_FUNCTION
