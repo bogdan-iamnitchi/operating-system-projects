@@ -96,8 +96,7 @@ int am_iesit = 0;
 
 sem_t max5_sem;
 
-pthread_cond_t cond1 = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond2 = PTHREAD_COND_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *thread_p6_function(void *param)
@@ -111,18 +110,12 @@ void *thread_p6_function(void *param)
         nrThreads++;
         
         if(s->tid == 13) {
-            while(nrThreads < 5) {
-                pthread_cond_wait(&cond1, &lock);
-            }
             am_iesit = 1;
             info(END, s->pid, s->tid);
-            pthread_cond_broadcast(&cond1);
+            pthread_cond_broadcast(&cond);
         } else {
             while(nrThreads < 5 && !am_iesit) {
-                if(nrThreads == 4) {
-                    pthread_cond_signal(&cond2);
-                }
-                pthread_cond_wait(&cond1, &lock);
+                pthread_cond_wait(&cond, &lock);
             }
             info(END, s->pid, s->tid);
         }
@@ -151,6 +144,8 @@ void p6_helper()
     }   
 
     sem_destroy(&max5_sem);
+    pthread_mutex_destroy(&lock);
+    pthread_cond_destroy(&cond);
     return;
 }
 
